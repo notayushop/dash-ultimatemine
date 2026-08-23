@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - UltimateMine</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .auth-card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+        }
+        .logo {
+            width: 70px; height: 70px; background: #20B15A;
+            border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; margin: 0 auto 20px;
+            font-size: 1.8rem; font-weight: bold; color: white;
+        }
+        h2 { text-align: center; color: #1a1a2e; margin-bottom: 25px; font-size: 1.5rem; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; color: #333; }
+        .form-group input {
+            width: 100%; padding: 12px 15px; border: 2px solid #e1e4e8;
+            border-radius: 8px; font-size: 1rem; transition: border-color 0.3s;
+        }
+        .form-group input:focus { outline: none; border-color: #20B15A; }
+        .form-group small { display: block; margin-top: 4px; font-size: 0.75rem; color: #888; }
+        .btn {
+            width: 100%; padding: 14px; background: #20B15A; color: white;
+            border: none; border-radius: 8px; font-size: 1rem; font-weight: 600;
+            cursor: pointer; margin-top: 10px; transition: background 0.3s;
+        }
+        .btn:hover { background: #1a8f48; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .error { color: #dc3545; text-align: center; margin-top: 12px; font-size: 0.9rem; min-height: 20px; }
+        .success { color: #28a745; }
+        .links { text-align: center; margin-top: 20px; font-size: 0.9rem; }
+        .links a { color: #20B15A; text-decoration: none; font-weight: 500; }
+        .links a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <div class="logo">UM</div>
+        <h2>Create Account</h2>
+        <form id="registerForm" onsubmit="return false;">
+            <div class="form-group">
+                <label>Display Name *</label>
+                <input type="text" id="displayName" placeholder="Your Name" required>
+            </div>
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="username" placeholder="username123" required pattern="[a-zA-Z0-9_]{3,20}">
+                <small>3-20 characters, letters, numbers, underscore only</small>
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="email" placeholder="your@email.com" required>
+            </div>
+            <div class="form-group">
+                <label>Password *</label>
+                <input type="password" id="password" placeholder="Min 8 characters" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label>Confirm Password *</label>
+                <input type="password" id="confirmPassword" placeholder="Re-enter password" required>
+            </div>
+            <div class="error" id="errorMsg"></div>
+            <button type="submit" class="btn" id="registerBtn">Create Account</button>
+        </form>
+        <div class="links">
+            Already have an account? <a href="login.html">Login</a>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <!-- Firebase Config -->
+    <script src="js/firebase.js"></script>
+
+    <script>
+        // Redirect if already logged in
+        auth.onAuthStateChanged(user => {
+            if (user) window.location.href = 'user.html';
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('registerBtn');
+            const errorDiv = document.getElementById('errorMsg');
+            
+            const displayName = document.getElementById('displayName').value.trim();
+            const username = document.getElementById('username').value.trim().toLowerCase();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            // Validations
+            if (password !== confirmPassword) {
+                errorDiv.textContent = 'Passwords do not match!';
+                return;
+            }
+            
+            if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+                errorDiv.textContent = 'Username must be 3-20 chars (letters, numbers, underscore)';
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'Creating Account...';
+            errorDiv.textContent = '';
+            
+            try {
+                // Check username uniqueness
+                const usernameSnap = await db.ref('users').orderByChild('username').equalTo(username).once('value');
+                if (usernameSnap.exists()) {
+                    throw new Error('Username already taken! Choose another.');
+                }
+                
+                // Create auth user
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Update profile
+                await user.updateProfile({ displayName });
+                
+                // Create user data in Realtime DB
+                await db.ref('users/' + user.uid).set({
+                    uid: user.uid,
+                    email: email,
+                    displayName: displayName,
+                    username: username,
+                    bio: '',
+                    website: '',
+                    discord: '',
+                    avatar: '',
+                    isCreator: false,
+                    isAdmin: false,
+                    favorites: {},
+                    notifications: {},
+                    createdAt: new Date().toISOString()
+                });
+                
+                // Success
+                errorDiv.className = 'error success';
+                errorDiv.textContent = '✅ Account created! Redirecting...';
+                
+                setTimeout(() => {
+                    window.location.href = 'user.html';
+                }, 1000);
+                
+            } catch (error) {
+                let msg = error.message;
+                if (error.code === 'auth/email-already-in-use') msg = 'Email already registered!';
+                else if (error.code === 'auth/weak-password') msg = 'Password too weak. Use 8+ characters.';
+                else if (error.code === 'auth/invalid-email') msg = 'Invalid email format.';
+                
+                errorDiv.className = 'error';
+                errorDiv.textContent = msg;
+                btn.disabled = false;
+                btn.textContent = 'Create Account';
+            }
+        });
+    </script>
+</body>
+</html>

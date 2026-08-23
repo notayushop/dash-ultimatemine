@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - UltimateMine</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .auth-card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 420px;
+        }
+        .logo {
+            width: 70px; height: 70px; background: #20B15A;
+            border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; margin: 0 auto 20px;
+            font-size: 1.8rem; font-weight: bold; color: white;
+        }
+        h2 { text-align: center; color: #1a1a2e; margin-bottom: 25px; font-size: 1.5rem; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; color: #333; }
+        .form-group input {
+            width: 100%; padding: 12px 15px; border: 2px solid #e1e4e8;
+            border-radius: 8px; font-size: 1rem; transition: border-color 0.3s;
+        }
+        .form-group input:focus { outline: none; border-color: #20B15A; }
+        .btn {
+            width: 100%; padding: 14px; background: #20B15A; color: white;
+            border: none; border-radius: 8px; font-size: 1rem; font-weight: 600;
+            cursor: pointer; margin-top: 10px; transition: background 0.3s;
+        }
+        .btn:hover { background: #1a8f48; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .error { color: #dc3545; text-align: center; margin-top: 12px; font-size: 0.9rem; min-height: 20px; }
+        .links { text-align: center; margin-top: 20px; font-size: 0.9rem; }
+        .links a { color: #20B15A; text-decoration: none; font-weight: 500; }
+        .links a:hover { text-decoration: underline; }
+        .forgot { display: block; text-align: right; font-size: 0.85rem; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <div class="logo">UM</div>
+        <h2>Welcome Back!</h2>
+        <form id="loginForm" onsubmit="return false;">
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email" placeholder="your@email.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                <a href="#" class="forgot" onclick="forgotPassword()">Forgot Password?</a>
+            </div>
+            <div class="error" id="errorMsg"></div>
+            <button type="submit" class="btn" id="loginBtn">Login</button>
+        </form>
+        <div class="links">
+            Don't have an account? <a href="register.html">Register</a>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- FIREBASE SDKS - MUST LOAD FIRST -->
+    <!-- ============================================ -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <!-- Firebase Config - MUST LOAD AFTER SDKs -->
+    <script src="js/firebase.js"></script>
+
+    <!-- Main Script -->
+    <script>
+        // ============================================
+        // CHECK IF FIREBASE IS LOADED
+        // ============================================
+        console.log('Firebase ready:', typeof firebase !== 'undefined');
+        console.log('Auth ready:', typeof auth !== 'undefined');
+        console.log('DB ready:', typeof db !== 'undefined');
+
+        // Wait for Firebase to initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ DOM loaded, Firebase should be ready');
+        });
+
+        // ============================================
+        // CHECK IF ALREADY LOGGED IN
+        // ============================================
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                console.log('User already logged in:', user.email);
+                
+                // Check if admin
+                db.ref('users/' + user.uid).once('value')
+                    .then(snap => {
+                        if (snap.exists() && snap.val().isAdmin) {
+                            window.location.href = 'admin.html';
+                        } else {
+                            window.location.href = 'user.html';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error checking admin:', err);
+                        window.location.href = 'user.html';
+                    });
+            }
+        });
+
+        // ============================================
+        // LOGIN FORM HANDLER
+        // ============================================
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('loginBtn');
+            const errorDiv = document.getElementById('errorMsg');
+            
+            // Check if Firebase is ready
+            if (typeof auth === 'undefined' || typeof db === 'undefined') {
+                errorDiv.textContent = '⚠️ System loading... Please wait or refresh.';
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'Logging in...';
+            errorDiv.textContent = '';
+            
+            try {
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+                
+                console.log('Attempting login for:', email);
+                
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                console.log('Login successful:', user.uid);
+                
+                // Check if admin
+                const snap = await db.ref('users/' + user.uid).once('value');
+                
+                if (snap.exists() && snap.val().isAdmin) {
+                    console.log('Redirecting to admin...');
+                    window.location.href = 'admin.html';
+                } else {
+                    console.log('Redirecting to user dashboard...');
+                    window.location.href = 'user.html';
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error.code, error.message);
+                
+                let msg = 'Login failed';
+                if (error.code === 'auth/user-not-found') {
+                    msg = 'No account found with this email';
+                } else if (error.code === 'auth/wrong-password') {
+                    msg = 'Incorrect password';
+                } else if (error.code === 'auth/invalid-email') {
+                    msg = 'Invalid email format';
+                } else if (error.code === 'auth/too-many-requests') {
+                    msg = 'Too many attempts. Please try later.';
+                } else if (error.code === 'auth/network-request-failed') {
+                    msg = 'Network error. Check your internet connection.';
+                } else {
+                    msg = error.message;
+                }
+                
+                errorDiv.textContent = msg;
+                btn.disabled = false;
+                btn.textContent = 'Login';
+            }
+        });
+
+        // ============================================
+        // FORGOT PASSWORD
+        // ============================================
+        async function forgotPassword() {
+            const email = document.getElementById('email').value.trim();
+            const errorDiv = document.getElementById('errorMsg');
+            
+            if (!email) {
+                errorDiv.textContent = 'Enter your email first';
+                return;
+            }
+            
+            try {
+                await auth.sendPasswordResetEmail(email);
+                errorDiv.style.color = '#28a745';
+                errorDiv.textContent = '✅ Password reset email sent! Check your inbox.';
+            } catch (error) {
+                errorDiv.style.color = '#dc3545';
+                errorDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
